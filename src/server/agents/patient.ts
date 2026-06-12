@@ -13,6 +13,7 @@ import { shareReportToER } from "./hospital";
 import { pusher } from "../realtime/pusher";
 
 export interface PatientResolutionResult {
+  found: boolean;
   resolved: boolean;
   method: "face" | "plate" | "manual" | "not_found";
   patientId?: string;
@@ -39,7 +40,7 @@ export async function resolveByFace(params: {
       message: "Face scan: no matching patient found in registry. Patient remains unknown.",
       metadata: { method: "face", found: false },
     });
-    return { resolved: false, method: "face" };
+    return { found: false, resolved: false, method: "face" };
   }
 
   return resolveAndFetchReport({
@@ -68,7 +69,7 @@ export async function resolveByPlate(params: {
       message: `Plate scan "${params.plate}": no matching patient found in registry.`,
       metadata: { method: "plate", plate: params.plate, found: false },
     });
-    return { resolved: false, method: "plate" };
+    return { found: false, resolved: false, method: "plate" };
   }
 
   return resolveAndFetchReport({
@@ -109,7 +110,7 @@ async function resolveAndFetchReport(params: {
     .where(eq(patients.id, params.patientId))
     .limit(1);
 
-  if (!patient) return { resolved: false, method: params.method };
+  if (!patient) return { found: false, resolved: false, method: params.method };
 
   const report = await fetchLatestReport(params.patientId);
 
@@ -180,6 +181,7 @@ async function resolveAndFetchReport(params: {
   await broadcastSessionState(params.emergencyId);
 
   return {
+    found: true,
     resolved: true,
     method: params.method,
     patientId: params.patientId,

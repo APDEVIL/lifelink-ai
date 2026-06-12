@@ -17,23 +17,31 @@ export const sosRouter = createTRPCRouter({
   trigger: publicProcedure
     .input(
       z.object({
-        description: z.string().min(3),
-        lat: z.number(),
-        lng: z.number(),
-        reportedBy: z.string().optional(),
+        description: z.string().min(3).default("Emergency SOS Triggered"),
+        lat: z.number().default(0),
+        lng: z.number().default(0),
+        reportedBy: z.string().optional().default("anonymous"),
         address: z.string().optional(),
       })
+      .partial() // Makes all fields optional so an empty object {} won't crash validation
+      .default({}) // Handles cases where no input object is passed at all
     )
     .mutation(async ({ input }) => {
       // 1. Create emergency record
       const emergencyId = `EMG_${Date.now()}`;
 
+      // Ensure we provide fallbacks if partial inputs are parsed
+      const description = input.description ?? "Emergency SOS Triggered";
+      const lat = input.lat ?? 0;
+      const lng = input.lng ?? 0;
+      const reportedBy = input.reportedBy ?? "anonymous";
+
       await db.insert(emergencies).values({
         id: emergencyId,
-        description: input.description,
-        reportedBy: input.reportedBy ?? "anonymous",
-        lat: input.lat,
-        lng: input.lng,
+        description: description,
+        reportedBy: reportedBy,
+        lat: lat,
+        lng: lng,
         address: input.address ?? null,
         severity: "HIGH",
         status: "active",
@@ -42,23 +50,23 @@ export const sosRouter = createTRPCRouter({
       // 2. Commander classifies + dispatches ambulance
       const { classification, dispatch } = await handleSOS({
         emergencyId,
-        description: input.description,
-        lat: input.lat,
-        lng: input.lng,
-        reportedBy: input.reportedBy,
+        description: description,
+        lat: lat,
+        lng: lng,
+        reportedBy: reportedBy,
       });
 
       // 3. Reserve best hospital (run in parallel with bystander detection)
       const [reservation, emergencyType] = await Promise.all([
         reserveHospital({
           emergencyId,
-          patientLocation: { lat: input.lat, lng: input.lng },
+          patientLocation: { lat: lat, lng: lng },
           bloodGroup: null, // unknown until patient identified
           likelyCause: classification.likelyCause,
           requiresIcu: classification.requiresIcu,
           requiresOxygen: classification.requiresOxygen,
         }),
-        detectEmergencyType(input.description),
+        detectEmergencyType(description),
       ]);
 
       // 4. Plan green corridor if ambulance + hospital assigned
@@ -69,7 +77,7 @@ export const sosRouter = createTRPCRouter({
         // (ambulance actual location is updated via GPS pings)
         corridor = await planCorridor({
           emergencyId,
-          ambulanceLocation: { lat: input.lat, lng: input.lng }, // refined on first GPS ping
+          ambulanceLocation: { lat: lat, lng: lng }, // refined on first GPS ping
           hospitalLocation: { lat: 0, lng: 0 }, // placeholder — filled from hospital record
           hospitalName: reservation.hospitalName,
         }).catch(() => null); // non-fatal if routing fails
