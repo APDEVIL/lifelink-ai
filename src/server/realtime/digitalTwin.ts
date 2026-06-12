@@ -211,14 +211,13 @@ export async function getSessionTimeline(emergencyId: string) {
 
 export async function updateEmergencyStatus(
   emergencyId: string,
-  status: "dispatched" | "on_scene" | "transporting" | "arrived" | "closed",
+  status: "ambulance_dispatched" | "on_scene" | "transporting" | "arrived" | "closed",
   _updatedBy: SessionRole
 ): Promise<void> {
   await db
     .update(emergencies)
     .set({
       status,
-      updatedAt: new Date().toISOString(),
     })
     .where(eq(emergencies.id, emergencyId));
 
